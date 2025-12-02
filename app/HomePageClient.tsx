@@ -2,7 +2,7 @@
 
 import { useAccount } from "wagmi";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
-import Link from "next/link";
+import { Link } from "react-router-dom";
 import AppSection from "@/app/components/AppSection";
 import AppCard from "@/app/components/AppCard";
 
@@ -17,17 +17,14 @@ export default function HomePageClient() {
   return (
     <AppSection className="max-w-2xl self-center">
       <AppCard>
-        <h2 className="mb-4 text-center text-4xl font-bold">
-          Welcome to localsafe.eth
-        </h2>
+        <h2 className="mb-4 text-center text-4xl font-bold">Welcome to localsafe.eth</h2>
         <p className="mb-8 text-center text-xl">
-          Your local safe wallet app to manage safe accounts. Connect your
-          wallet to get started.
+          Your local safe wallet app to manage safe accounts. Connect your wallet to get started.
         </p>
         <div className="flex w-full flex-col items-center gap-6">
           {isConnected ? (
             <Link
-              href="/accounts"
+              to="/accounts"
               className="btn btn-primary btn-soft text-md w-full rounded py-4 sm:text-lg"
               data-testid="continue-with-account"
             >

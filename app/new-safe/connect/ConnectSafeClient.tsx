@@ -6,7 +6,7 @@ import BtnCancel from "@/app/components/BtnCancel";
 import NetworkModal from "@/app/components/NetworkModal";
 import { useState } from "react";
 import { useChains } from "wagmi";
-import { useRouter } from "next/navigation";
+import { useNavigate } from "react-router-dom";
 import { useSafeWalletContext } from "@/app/provider/SafeWalletProvider";
 import useNewSafe from "@/app/hooks/useNewSafe";
 import { getRandomSafeName, sanitizeUserInput } from "@/app/utils/helpers";
@@ -26,14 +26,12 @@ export default function ConnectSafeClient() {
   const chains = useChains();
   const { addSafe, safeWalletData } = useSafeWalletContext();
   const { connectNewSafe } = useNewSafe();
-  const router = useRouter();
+  const navigate = useNavigate();
 
   // State for name, address, chain, error, loading
   const [safeName, setSafeName] = useState<string>("");
   const [randomName] = useState(() => getRandomSafeName());
-  const [safeAddress, setSafeAddress] = useState<`0x${string}`>(
-    "" as `0x${string}`,
-  );
+  const [safeAddress, setSafeAddress] = useState<`0x${string}`>("" as `0x${string}`);
   const [selectedChain, setSelectedChain] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -66,9 +64,7 @@ export default function ConnectSafeClient() {
     // Check if already registered
     const addressBook = safeWalletData.data.addressBook;
     if (addressBook[selectedChain] && addressBook[selectedChain][safeAddress]) {
-      setError(
-        "This Safe address is already registered on the selected network.",
-      );
+      setError("This Safe address is already registered on the selected network.");
       setLoading(false);
       return;
     }
@@ -87,11 +83,9 @@ export default function ConnectSafeClient() {
       }
       // Store in addressBook with name
       addSafe(selectedChain, safeAddress, nameToStore);
-      router.push("/accounts");
+      navigate("/accounts");
     } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Failed to connect or add Safe",
-      );
+      setError(err instanceof Error ? err.message : "Failed to connect or add Safe");
     } finally {
       setLoading(false);
     }
@@ -100,20 +94,15 @@ export default function ConnectSafeClient() {
   return (
     <AppSection className="flex min-h-screen items-center">
       <div className="self-start">
-        <BtnCancel href="/accounts" />
+        <BtnCancel to="/accounts" />
       </div>
       <AppCard
-        title={
-          <div className="flex w-full items-center justify-between">
-            Add Safe Account
-          </div>
-        }
+        title={<div className="flex w-full items-center justify-between">Add Safe Account</div>}
         className="w-full max-w-md"
       >
         <div className="text-base-content text-sm">
-          You can only add Safe accounts that are already deployed on the
-          selected network. If your Safe is not yet deployed, please use the
-          Deploy New Safe flow.
+          You can only add Safe accounts that are already deployed on the selected network. If your Safe is not yet
+          deployed, please use the Deploy New Safe flow.
         </div>
 
         {/* Form Safe Name, Address, Network Select, Error, Add Button */}
@@ -129,9 +118,7 @@ export default function ConnectSafeClient() {
             data-testid="safe-name-input"
           />
           <label className="label">
-            <span className="label-text-alt">
-              If left blank, a random name will be generated.
-            </span>
+            <span className="label-text-alt">If left blank, a random name will be generated.</span>
           </label>
         </fieldset>
         <fieldset className="fieldset w-full">
@@ -188,10 +175,7 @@ export default function ConnectSafeClient() {
         </button>
       </AppCard>
 
-      <NetworkModal
-        open={networkModalOpen}
-        onClose={() => setNetworkModalOpen(false)}
-      />
+      <NetworkModal open={networkModalOpen} onClose={() => setNetworkModalOpen(false)} />
     </AppSection>
   );
 }

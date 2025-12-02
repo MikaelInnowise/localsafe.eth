@@ -1,23 +1,24 @@
 "use client";
 
-import React, {
-  createContext,
-  useContext,
-  useEffect,
-  useMemo,
-  useState,
-} from "react";
+import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { Chain } from "wagmi/chains";
 import { WAGMI_CONFIG_NETWORKS_KEY } from "../utils/constants";
 import { WagmiProvider } from "wagmi";
+import { fallback, injected, unstable_connector } from "@wagmi/core";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import "@rainbow-me/rainbowkit/styles.css";
+import { RainbowKitProvider, lightTheme, darkTheme, connectorsForWallets } from "@rainbow-me/rainbowkit";
 import {
-  RainbowKitProvider,
-  lightTheme,
-  darkTheme,
-} from "@rainbow-me/rainbowkit";
-import { getDefaultConfig } from "@rainbow-me/rainbowkit";
+  metaMaskWallet,
+  rainbowWallet,
+  walletConnectWallet,
+  injectedWallet,
+  ledgerWallet,
+  oneKeyWallet,
+  rabbyWallet,
+  phantomWallet,
+} from "@rainbow-me/rainbowkit/wallets";
+import { createConfig, http } from "wagmi";
 import {
   mainnet,
   sepolia,
@@ -55,10 +56,11 @@ import mantleIcon from "../assets/chainIcons/mantle.svg";
 import hardhatIcon from "../assets/chainIcons/hardhat.svg";
 
 // Helper to add icon URLs to chains
-const addChainIcon = (chain: Chain, iconUrl: string): Chain => ({
-  ...chain,
-  iconUrl,
-} as Chain);
+const addChainIcon = (chain: Chain, iconUrl: string): Chain =>
+  ({
+    ...chain,
+    iconUrl,
+  }) as Chain;
 
 // Default chains that should always be available with local SVG icons
 const DEFAULT_CHAINS: Chain[] = [
@@ -85,12 +87,10 @@ const DEFAULT_CHAINS: Chain[] = [
 export interface WagmiConfigContextType {
   configChains: Chain[];
   setConfigChains: React.Dispatch<React.SetStateAction<Chain[]>>;
-  wagmiConfig: ReturnType<typeof getDefaultConfig>;
+  wagmiConfig: ReturnType<typeof createConfig>;
 }
 
-const WagmiConfigContext = createContext<WagmiConfigContextType | undefined>(
-  undefined,
-);
+const WagmiConfigContext = createContext<WagmiConfigContextType | undefined>(undefined);
 
 export const WagmiConfigProvider: React.FC<{
   children: React.ReactNode;
@@ -126,10 +126,7 @@ export const WagmiConfigProvider: React.FC<{
   // Save chains to localStorage whenever they change
   useEffect(() => {
     if (typeof window !== "undefined" && chainsLoaded) {
-      localStorage.setItem(
-        WAGMI_CONFIG_NETWORKS_KEY,
-        JSON.stringify(configChains),
-      );
+      localStorage.setItem(WAGMI_CONFIG_NETWORKS_KEY, JSON.stringify(configChains));
     }
   }, [configChains, chainsLoaded]);
 
@@ -137,10 +134,43 @@ export const WagmiConfigProvider: React.FC<{
   const wagmiConfig = useMemo(() => {
     if (!isMounted) return null;
 
-    return getDefaultConfig({
-      appName: "localsafe.eth",
-      projectId: process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID!,
+    // Create transports object that uses wallet provider's RPC (EIP-1193)
+    // This ensures we use the user's wallet RPC instead of public RPC endpoints
+    const transports = configChains.reduce(
+      (acc, chain) => {
+        // Fallback to public RPC if connector doesn't respond
+        acc[chain.id] = fallback([unstable_connector(injected), http()]);
+        return acc;
+      },
+      {} as Record<number, ReturnType<typeof fallback>>,
+    );
+
+    // Configure wallets explicitly to exclude Coinbase Wallet (which phones home)
+    const connectors = connectorsForWallets(
+      [
+        {
+          groupName: "Popular",
+          wallets: [metaMaskWallet, rabbyWallet, rainbowWallet, phantomWallet],
+        },
+        {
+          groupName: "Hardware",
+          wallets: [ledgerWallet, oneKeyWallet],
+        },
+        {
+          groupName: "More",
+          wallets: [walletConnectWallet, injectedWallet],
+        },
+      ],
+      {
+        appName: "localsafe.eth",
+        projectId: process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID!,
+      },
+    );
+
+    return createConfig({
       chains: configChains as [typeof mainnet, ...[typeof mainnet]],
+      connectors,
+      transports,
       ssr: false,
     });
   }, [configChains, isMounted]);
@@ -153,9 +183,7 @@ export const WagmiConfigProvider: React.FC<{
   }
 
   return (
-    <WagmiConfigContext.Provider
-      value={{ configChains, setConfigChains, wagmiConfig }}
-    >
+    <WagmiConfigContext.Provider value={{ configChains, setConfigChains, wagmiConfig }}>
       <WagmiProvider config={wagmiConfig}>
         <QueryClientProvider client={queryClient}>
           <RainbowKitProvider
@@ -180,9 +208,6 @@ export const WagmiConfigProvider: React.FC<{
 
 export function useWagmiConfigContext() {
   const ctx = useContext(WagmiConfigContext);
-  if (!ctx)
-    throw new Error(
-      "useWagmiConfigContext must be used within a WagmiConfigProvider",
-    );
+  if (!ctx) throw new Error("useWagmiConfigContext must be used within a WagmiConfigProvider");
   return ctx;
 }

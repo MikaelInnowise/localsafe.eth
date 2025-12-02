@@ -2,9 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { useWalletConnect } from "../provider/WalletConnectProvider";
-import { useRouter, useParams, usePathname } from "next/navigation";
-import useSafe from "../hooks/useSafe";
-import { useAccount } from "wagmi";
+import { useNavigate, useParams, useLocation } from "react-router-dom";
 
 /**
  * WalletConnectRequestHandler component that monitors for WalletConnect transaction requests
@@ -13,9 +11,10 @@ import { useAccount } from "wagmi";
  */
 export default function WalletConnectRequestHandler() {
   const { pendingRequest, rejectRequest, clearPendingRequest } = useWalletConnect();
-  const router = useRouter();
-  const pathname = usePathname();
-  const { address: safeAddress } = useParams<{ address?: `0x${string}` }>();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const pathname = location.pathname;
+  const { address: safeAddress } = useParams<{ address?: string }>();
   const processedRequestIds = useRef(new Set<number>());
   const lastRequestId = useRef<number | null>(null);
   const isNavigatingToWcPage = useRef(false);
@@ -23,21 +22,15 @@ export default function WalletConnectRequestHandler() {
   // Handle incoming requests and route to appropriate pages
   useEffect(() => {
     if (!pendingRequest) {
-      console.log("WalletConnectRequestHandler: No pending request");
       return;
     }
 
-    console.log("WalletConnectRequestHandler: Pending request detected:", pendingRequest);
-
     if (processedRequestIds.current.has(pendingRequest.id)) {
-      console.log("WalletConnectRequestHandler: Request already processed");
       return;
     }
 
     const { params } = pendingRequest;
     const { request } = params;
-
-    console.log("WalletConnectRequestHandler: Request method:", request.method);
 
     // Store the last request ID for cleanup tracking
     lastRequestId.current = pendingRequest.id;
@@ -51,8 +44,6 @@ export default function WalletConnectRequestHandler() {
         return;
       }
 
-      console.log("WalletConnectRequestHandler: Navigating to wc-tx page");
-
       // Navigate to a WalletConnect transaction handling page
       // We'll store the request in sessionStorage so the transaction page can access it
       if (typeof window !== "undefined") {
@@ -63,7 +54,7 @@ export default function WalletConnectRequestHandler() {
       isNavigatingToWcPage.current = true;
 
       // Navigate to the Safe's WalletConnect transaction page
-      router.push(`/safe/${safeAddress}/wc-tx`);
+      navigate(`/safe/${safeAddress}/wc-tx`);
     }
 
     // Handle other methods like eth_signTypedData, eth_sign, personal_sign, etc.
@@ -89,9 +80,9 @@ export default function WalletConnectRequestHandler() {
       isNavigatingToWcPage.current = true;
 
       // Navigate to the Safe's WalletConnect signing page
-      router.push(`/safe/${safeAddress}/wc-sign`);
+      navigate(`/safe/${safeAddress}/wc-sign`);
     }
-  }, [pendingRequest, router, safeAddress]);
+  }, [pendingRequest, navigate, safeAddress]);
 
   // Auto-reject requests when navigating away from WalletConnect pages
   useEffect(() => {
@@ -108,10 +99,6 @@ export default function WalletConnectRequestHandler() {
       // 1. We're not on a WC page
       // 2. We're not in the process of navigating to a WC page
       if (!isOnWcPage && !isNavigatingToWcPage.current) {
-        console.log("🟠 Auto-rejecting request - navigated away from WalletConnect page");
-        console.log("🟠 Current path:", pathname);
-        console.log("🟠 Request ID:", pendingRequest.id);
-
         // Auto-reject the request
         const autoReject = async () => {
           try {
@@ -121,11 +108,10 @@ export default function WalletConnectRequestHandler() {
                 code: 4001,
                 message: "User navigated away from request page",
               },
-              pendingRequest.id // Pass the request ID
+              pendingRequest.id, // Pass the request ID
             );
-            console.log("🟠 Auto-rejection sent successfully");
           } catch (error) {
-            console.error("🟠 Failed to auto-reject request:", error);
+            console.error("Failed to auto-reject WalletConnect request:", error);
             // Clear anyway as a fallback
             clearPendingRequest();
           }

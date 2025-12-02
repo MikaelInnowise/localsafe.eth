@@ -1,9 +1,6 @@
 {
-  "bin": {
-    "localsafe": "./cli.js"
-  },
   "name": "localsafe.eth",
-  "version": "0.1.0",
+  "version": "0.2.6",
   "private": true,
   "type": "module",
   "scripts": {
@@ -11,11 +8,14 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "localsafe": "next build --turbopack && next start",
+    "format": "prettier --write \"app/**/*.{ts,tsx,js,jsx}\"",
+    "format:check": "prettier --check \"app/**/*.{ts,tsx,js,jsx}\"",
+    "localsafe": "next build && npx serve out -p 3000",
     "anvil": "anvil --load-state ./anvil-safe-state.json --block-time 1",
     "test:e2e": "bash tests/scripts/start-anvil-and-test.sh",
     "test:clean": "pkill -9 ^next-server || true; pkill -9 ^anvil",
-    "synpress:build": "anvil --chain-id 31337 > /dev/null 2>&1 & ANVIL_PID=$! && sleep 2 && xvfb-run pnpm exec synpress --force && kill $ANVIL_PID"
+    "synpress:build": "anvil --chain-id 31337 > /dev/null 2>&1 & ANVIL_PID=$! && sleep 2 && xvfb-run pnpm exec synpress --force && kill $ANVIL_PID",
+    "postinstall": "git config core.hooksPath .githooks && echo 'Git hooks installed' || true"
   },
   "dependencies": {
     "@rainbow-me/rainbowkit": "^2.2.8",
@@ -31,6 +31,7 @@
     "next": "15.5.0",
     "react": "19.1.0",
     "react-dom": "19.1.0",
+    "react-router-dom": "^7.9.5",
     "viem": "~2.35.1",
     "wagmi": "^2.16.6"
   },

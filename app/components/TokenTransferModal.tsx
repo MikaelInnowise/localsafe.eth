@@ -2,7 +2,7 @@
 
 import React, { useState, useMemo, useEffect } from "react";
 import Modal from "./Modal";
-import { useRouter } from "next/navigation";
+import { useNavigate } from "react-router-dom";
 import { encodeFunctionData, parseUnits } from "viem";
 import useSafe from "@/app/hooks/useSafe";
 import { useSafeTxContext } from "@/app/provider/SafeTxProvider";
@@ -41,7 +41,7 @@ export default function TokenTransferModal({
   tokenBalance,
   safeAddress,
 }: TokenTransferModalProps) {
-  const router = useRouter();
+  const navigate = useNavigate();
   const { chain } = useAccount();
   const { buildSafeTransaction, getSafeTransactionHash, safeInfo } = useSafe(safeAddress as `0x${string}`);
   const { getAllTransactions } = useSafeTxContext();
@@ -88,7 +88,9 @@ export default function TokenTransferModal({
 
     // Check if nonce is already used on-chain
     if (nonce < safeInfo.nonce) {
-      setNonceWarning(`⚠️ This nonce (${nonce}) has already been executed on-chain. Current on-chain nonce is ${safeInfo.nonce}.`);
+      setNonceWarning(
+        `⚠️ This nonce (${nonce}) has already been executed on-chain. Current on-chain nonce is ${safeInfo.nonce}.`,
+      );
       return;
     }
 
@@ -147,14 +149,17 @@ export default function TokenTransferModal({
       }
 
       // Build the Safe transaction
-      const safeTx = await buildSafeTransaction([
-        {
-          to: tokenAddress,
-          value: "0",
-          data: data,
-          operation: 0,
-        },
-      ], nonce);
+      const safeTx = await buildSafeTransaction(
+        [
+          {
+            to: tokenAddress,
+            value: "0",
+            data: data,
+            operation: 0,
+          },
+        ],
+        nonce,
+      );
 
       if (!safeTx) {
         setError("Failed to build transaction");
@@ -166,7 +171,7 @@ export default function TokenTransferModal({
       const hash = await getSafeTransactionHash(safeTx);
 
       // Navigate to the transaction signing page
-      router.push(`/safe/${safeAddress}/tx/${hash}`);
+      navigate(`/safe/${safeAddress}/tx/${hash}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create transfer transaction");
       setIsBuilding(false);
@@ -233,10 +238,7 @@ export default function TokenTransferModal({
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
           />
-          <button
-            className="btn btn-outline btn-sm"
-            onClick={handleMaxClick}
-          >
+          <button className="btn btn-outline btn-sm" onClick={handleMaxClick}>
             Max
           </button>
         </div>
@@ -252,7 +254,7 @@ export default function TokenTransferModal({
             xmlns="http://www.w3.org/2000/svg"
             fill="none"
             viewBox="0 0 24 24"
-            className="stroke-current shrink-0 w-4 h-4"
+            className="h-4 w-4 shrink-0 stroke-current"
           >
             <path
               strokeLinecap="round"
@@ -270,7 +272,7 @@ export default function TokenTransferModal({
           <div className="alert alert-warning mb-2 text-xs">
             <svg
               xmlns="http://www.w3.org/2000/svg"
-              className="stroke-current shrink-0 h-4 w-4"
+              className="h-4 w-4 shrink-0 stroke-current"
               fill="none"
               viewBox="0 0 24 24"
             >
@@ -281,9 +283,7 @@ export default function TokenTransferModal({
                 d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
               />
             </svg>
-            <div>
-              {nonceWarning}
-            </div>
+            <div>{nonceWarning}</div>
           </div>
         )}
         <input

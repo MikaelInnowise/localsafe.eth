@@ -1,19 +1,12 @@
 import { useAccount } from "wagmi";
 import { useCallback, useEffect, useState, useRef } from "react";
 import { useSafeWalletContext } from "../provider/SafeWalletProvider";
-import {
-  createConnectionConfig,
-  createPredictionConfig,
-  getMinimalEIP1193Provider,
-} from "../utils/helpers";
+import { createConnectionConfig, createPredictionConfig, getMinimalEIP1193Provider } from "../utils/helpers";
 import { getAddress, encodeFunctionData, Address } from "viem";
 
 // Cache for protocolKit instances (per chainId+safeAddress)
 import { useSafeTxContext } from "../provider/SafeTxProvider";
-import Safe, {
-  EthSafeTransaction,
-  SafeConfig,
-} from "@safe-global/protocol-kit";
+import Safe, { EthSafeTransaction, SafeConfig } from "@safe-global/protocol-kit";
 import { MinimalEIP1193Provider, SafeDeployStep } from "../utils/types";
 import { DEFAULT_DEPLOY_STEPS } from "../utils/constants";
 import { waitForTransactionReceipt } from "viem/actions";
@@ -42,6 +35,17 @@ const SAFE_ABI = [
     type: "function",
   },
   {
+    inputs: [
+      { name: "prevOwner", type: "address" },
+      { name: "oldOwner", type: "address" },
+      { name: "newOwner", type: "address" },
+    ],
+    name: "swapOwner",
+    outputs: [],
+    stateMutability: "nonpayable",
+    type: "function",
+  },
+  {
     inputs: [{ name: "_threshold", type: "uint256" }],
     name: "changeThreshold",
     outputs: [],
@@ -59,19 +63,14 @@ const SAFE_ABI = [
 export default function useSafe(safeAddress: `0x${string}`) {
   const { address: signer, chain, connector, isConnected } = useAccount();
 
-  const { safeWalletData, contractNetworks, addSafe, removeSafe } =
-    useSafeWalletContext();
+  const { safeWalletData, contractNetworks, addSafe, removeSafe, getSafeMultiSendConfig } = useSafeWalletContext();
   const { saveTransaction, getTransaction } = useSafeTxContext();
 
   // Get Safe name from addressBook for current chain
   const chainId = chain?.id ? String(chain.id) : undefined;
   let safeName = "";
-  if (
-    chainId &&
-    safeWalletData.data.addressBook[chainId]?.[safeAddress as `0x${string}`]
-  ) {
-    safeName =
-      safeWalletData.data.addressBook[chainId]?.[safeAddress as `0x${string}`];
+  if (chainId && safeWalletData.data.addressBook[chainId]?.[safeAddress as `0x${string}`]) {
+    safeName = safeWalletData.data.addressBook[chainId]?.[safeAddress as `0x${string}`];
   }
 
   const [safeInfo, setSafeInfo] = useState<{
@@ -91,33 +90,18 @@ export default function useSafe(safeAddress: `0x${string}`) {
   const [unavailable, setUnavailable] = useState(false);
 
   // Get Safe info from context
-  const deployedSafe =
-    chainId &&
-    safeWalletData.data.addressBook[chainId]?.[safeAddress as `0x${string}`];
-  const undeployedSafe =
-    chainId &&
-    safeWalletData.data.undeployedSafes[chainId]?.[
-    safeAddress as `0x${string}`
-    ];
+  const deployedSafe = chainId && safeWalletData.data.addressBook[chainId]?.[safeAddress as `0x${string}`];
+  const undeployedSafe = chainId && safeWalletData.data.undeployedSafes[chainId]?.[safeAddress as `0x${string}`];
 
   // Store the current kit instance in a ref
   const kitRef = useRef<Safe>(null);
 
   // Helper to (re)connect and cache a SafeKit instance
   const connectSafe = useCallback(
-    async (
-      safeAddress: `0x${string}`,
-      provider: MinimalEIP1193Provider,
-      signer: `0x${string}`,
-    ): Promise<Safe> => {
+    async (safeAddress: `0x${string}`, provider: MinimalEIP1193Provider, signer: `0x${string}`): Promise<Safe> => {
       // Ensure signer address is properly checksummed
       const checksummedSigner = getAddress(signer);
-      const config: SafeConfig = createConnectionConfig(
-        provider,
-        checksummedSigner,
-        safeAddress,
-        contractNetworks,
-      );
+      const config: SafeConfig = createConnectionConfig(provider, checksummedSigner, safeAddress, contractNetworks);
       let kit = await Safe.init(config);
       kit = await kit.connect(config);
       return kit;
@@ -149,8 +133,7 @@ export default function useSafe(safeAddress: `0x${string}`) {
       }
       if (undeployedSafe) {
         setSafeInfo({
-          owners: undeployedSafe.props.safeAccountConfig
-            .owners as `0x${string}`[],
+          owners: undeployedSafe.props.safeAccountConfig.owners as `0x${string}`[],
           balance: BigInt(0),
           threshold: undeployedSafe.props.safeAccountConfig.threshold,
           version: undeployedSafe.props.safeVersion || "1.4.1",
@@ -164,9 +147,7 @@ export default function useSafe(safeAddress: `0x${string}`) {
         const checksummedSigner = signer ? getAddress(signer) : null;
         setIsOwner(
           checksummedSigner
-            ? undeployedSafe.props.safeAccountConfig.owners.includes(
-              checksummedSigner as `0x${string}`,
-            )
+            ? undeployedSafe.props.safeAccountConfig.owners.includes(checksummedSigner as `0x${string}`)
             : false,
         );
         setUnavailable(false);
@@ -175,20 +156,15 @@ export default function useSafe(safeAddress: `0x${string}`) {
           const provider = await getMinimalEIP1193Provider(connector);
           if (!provider) throw new Error("No provider available");
           // Always reconnect kit with current signer and provider
-          const kit = await connectSafe(
-            safeAddress as `0x${string}`,
-            provider,
-            signer as `0x${string}`,
-          );
+          const kit = await connectSafe(safeAddress as `0x${string}`, provider, signer as `0x${string}`);
           kitRef.current = kit;
-          const [owners, threshold, version, balance, nonce] =
-            await Promise.all([
-              kit.getOwners(),
-              kit.getThreshold(),
-              kit.getContractVersion(),
-              kit.getBalance(),
-              kit.getNonce(),
-            ]);
+          const [owners, threshold, version, balance, nonce] = await Promise.all([
+            kit.getOwners(),
+            kit.getThreshold(),
+            kit.getContractVersion(),
+            kit.getBalance(),
+            kit.getNonce(),
+          ]);
           if (cancelled) return;
           setSafeInfo({
             owners: owners as `0x${string}`[],
@@ -218,20 +194,15 @@ export default function useSafe(safeAddress: `0x${string}`) {
           const provider = await getMinimalEIP1193Provider(connector);
           if (!provider) throw new Error("No provider available");
           // Try to connect to the Safe directly
-          const kit = await connectSafe(
-            safeAddress as `0x${string}`,
-            provider,
-            signer as `0x${string}`,
-          );
+          const kit = await connectSafe(safeAddress as `0x${string}`, provider, signer as `0x${string}`);
           kitRef.current = kit;
-          const [owners, threshold, version, balance, nonce] =
-            await Promise.all([
-              kit.getOwners(),
-              kit.getThreshold(),
-              kit.getContractVersion(),
-              kit.getBalance(),
-              kit.getNonce(),
-            ]);
+          const [owners, threshold, version, balance, nonce] = await Promise.all([
+            kit.getOwners(),
+            kit.getThreshold(),
+            kit.getContractVersion(),
+            kit.getBalance(),
+            kit.getNonce(),
+          ]);
           if (cancelled) return;
           setSafeInfo({
             owners: owners as `0x${string}`[],
@@ -276,9 +247,7 @@ export default function useSafe(safeAddress: `0x${string}`) {
 
   // Deploy an undeployed Safe using its config from SafeWalletData
   const deployUndeployedSafe = useCallback(
-    async (
-      setDeploySteps: (steps: Array<SafeDeployStep>) => void,
-    ): Promise<Array<SafeDeployStep>> => {
+    async (setDeploySteps: (steps: Array<SafeDeployStep>) => void): Promise<Array<SafeDeployStep>> => {
       if (!undeployedSafe || !connector || !signer || !chainId) {
         return [
           {
@@ -304,13 +273,30 @@ export default function useSafe(safeAddress: `0x${string}`) {
         // Build SafeConfig using helper for ProtocolKit compatibility
         // Ensure signer address is properly checksummed
         const checksummedSigner = signer ? getAddress(signer) : undefined;
+
+        // Merge custom multiSend config if available
+        let mergedContractNetworks = contractNetworks;
+        if (chainId && contractNetworks) {
+          const customMultiSend = getSafeMultiSendConfig(chainId, safeAddress as `0x${string}`);
+          if (customMultiSend && (customMultiSend.multiSendAddress || customMultiSend.multiSendCallOnlyAddress)) {
+            mergedContractNetworks = {
+              ...contractNetworks,
+              [chainId]: {
+                ...contractNetworks[chainId],
+                ...(customMultiSend.multiSendAddress && { multiSendAddress: customMultiSend.multiSendAddress }),
+                ...(customMultiSend.multiSendCallOnlyAddress && { multiSendCallOnlyAddress: customMultiSend.multiSendCallOnlyAddress }),
+              },
+            };
+          }
+        }
+
         const config: SafeConfig = createPredictionConfig(
           provider,
           checksummedSigner,
           undeployedSafe.props.safeAccountConfig.owners,
           undeployedSafe.props.safeAccountConfig.threshold,
           undeployedSafe.props.saltNonce,
-          contractNetworks,
+          mergedContractNetworks,
         );
         const kit = await Safe.init(config);
         let deploymentTx, kitClient, txHash;
@@ -383,17 +369,7 @@ export default function useSafe(safeAddress: `0x${string}`) {
       }
       return steps;
     },
-    [
-      undeployedSafe,
-      connector,
-      signer,
-      chain,
-      chainId,
-      addSafe,
-      removeSafe,
-      safeName,
-      contractNetworks,
-    ],
+    [undeployedSafe, connector, signer, chain, chainId, addSafe, removeSafe, safeName, contractNetworks],
   );
 
   // ProtocolKit helpers
@@ -412,13 +388,16 @@ export default function useSafe(safeAddress: `0x${string}`) {
       if (!kit) return null;
       try {
         // Normalize transactions to ensure value is never empty string
-        const normalizedTxs = txs.map(tx => ({
+        const normalizedTxs = txs.map((tx) => ({
           ...tx,
           value: tx.value || "0",
           data: tx.data || "0x",
         }));
 
-        const options: any = {
+        const options: {
+          transactions: Array<{ to: string; value: string; data: string; operation?: number }>;
+          options?: { nonce: number };
+        } = {
           transactions: normalizedTxs,
         };
 
@@ -440,24 +419,18 @@ export default function useSafe(safeAddress: `0x${string}`) {
   );
 
   // Validate a SafeTransaction
-  const validateSafeTransaction = useCallback(
-    async (safeTx: EthSafeTransaction): Promise<boolean> => {
-      const kit = kitRef.current;
-      if (!kit) return false;
-      return kit.isValidTransaction(safeTx);
-    },
-    [],
-  );
+  const validateSafeTransaction = useCallback(async (safeTx: EthSafeTransaction): Promise<boolean> => {
+    const kit = kitRef.current;
+    if (!kit) return false;
+    return kit.isValidTransaction(safeTx);
+  }, []);
 
   // Get transaction hash
-  const getSafeTransactionHash = useCallback(
-    async (safeTx: EthSafeTransaction): Promise<string> => {
-      const kit = kitRef.current;
-      if (!kit) return "";
-      return kit.getTransactionHash(safeTx);
-    },
-    [],
-  );
+  const getSafeTransactionHash = useCallback(async (safeTx: EthSafeTransaction): Promise<string> => {
+    const kit = kitRef.current;
+    if (!kit) return "";
+    return kit.getTransactionHash(safeTx);
+  }, []);
 
   // Sign a SafeTransaction
   const signSafeTransaction = useCallback(
@@ -470,11 +443,7 @@ export default function useSafe(safeAddress: `0x${string}`) {
         const provider = await getMinimalEIP1193Provider(connector);
 
         // Re-connect the kit with the current signer to ensure proper context
-        const reconnectedKit = await connectSafe(
-          safeAddress,
-          provider!,
-          checksummedSigner as `0x${string}`,
-        );
+        const reconnectedKit = await connectSafe(safeAddress, provider!, checksummedSigner as `0x${string}`);
 
         // Normalize the transaction data to fix empty string values
         // This handles existing transactions that were created before validation fix
@@ -505,32 +474,28 @@ export default function useSafe(safeAddress: `0x${string}`) {
   );
 
   // Broadcast a SafeTransaction
-  const broadcastSafeTransaction = useCallback(
-    async (safeTx: EthSafeTransaction) => {
-      const kit = kitRef.current;
-      if (!kit) return null;
-      return kit.executeTransaction(safeTx);
-    },
-    [],
-  );
+  const broadcastSafeTransaction = useCallback(async (safeTx: EthSafeTransaction) => {
+    const kit = kitRef.current;
+    if (!kit) return null;
+    return kit.executeTransaction(safeTx);
+  }, []);
 
   // Reconstruct SafeTransaction from provider data (current only)
-  const getSafeTransactionCurrent =
-    useCallback(async (): Promise<EthSafeTransaction | null> => {
-      const kit = kitRef.current;
-      if (!kit) return null;
-      const safeTx = getTransaction(safeAddress);
-      if (!safeTx) return null;
-      // Check if current owner has already signed
-      // Safe SDK stores signatures with lowercase addresses
-      let signed = false;
-      if (safeTx.signatures && signer) {
-        const checksummedSigner = getAddress(signer);
-        signed = safeTx.signatures.has(checksummedSigner.toLowerCase());
-      }
-      setHasSigned(signed);
-      return safeTx;
-    }, [getTransaction, signer, safeAddress]);
+  const getSafeTransactionCurrent = useCallback(async (): Promise<EthSafeTransaction | null> => {
+    const kit = kitRef.current;
+    if (!kit) return null;
+    const safeTx = getTransaction(safeAddress);
+    if (!safeTx) return null;
+    // Check if current owner has already signed
+    // Safe SDK stores signatures with lowercase addresses
+    let signed = false;
+    if (safeTx.signatures && signer) {
+      const checksummedSigner = getAddress(signer);
+      signed = safeTx.signatures.has(checksummedSigner.toLowerCase());
+    }
+    setHasSigned(signed);
+    return safeTx;
+  }, [getTransaction, signer, safeAddress]);
 
   // Create transaction to add a new owner
   const createAddOwnerTransaction = useCallback(
@@ -577,9 +542,7 @@ export default function useSafe(safeAddress: `0x${string}`) {
 
       try {
         const owners = safeInfo.owners;
-        const ownerIndex = owners.findIndex(
-          (o) => o.toLowerCase() === ownerToRemove.toLowerCase()
-        );
+        const ownerIndex = owners.findIndex((o) => o.toLowerCase() === ownerToRemove.toLowerCase());
 
         if (ownerIndex === -1) {
           throw new Error("Owner not found");
@@ -587,9 +550,8 @@ export default function useSafe(safeAddress: `0x${string}`) {
 
         // Get the previous owner in the linked list
         // If removing the first owner, prevOwner is the sentinel address
-        const prevOwner = ownerIndex === 0
-          ? "0x0000000000000000000000000000000000000001" as Address
-          : owners[ownerIndex - 1];
+        const prevOwner =
+          ownerIndex === 0 ? ("0x0000000000000000000000000000000000000001" as Address) : owners[ownerIndex - 1];
 
         // Encode the removeOwner function call
         const data = encodeFunctionData({
@@ -665,7 +627,7 @@ export default function useSafe(safeAddress: `0x${string}`) {
   const createBatchedOwnerManagementTransaction = useCallback(
     async (
       changes: Array<{ type: "add" | "remove"; address: Address }>,
-      newThreshold: number
+      newThreshold: number,
     ): Promise<string | null> => {
       if (!safeInfo) return null;
 
@@ -684,11 +646,13 @@ export default function useSafe(safeAddress: `0x${string}`) {
         // Get current owners list
         let currentOwners = [...safeInfo.owners];
 
-        // Create remove transactions
-        for (const removal of removals) {
-          const ownerIndex = currentOwners.findIndex(
-            (o) => o.toLowerCase() === removal.address.toLowerCase()
-          );
+        // Check if we can use swapOwner (1 removal + 1 addition)
+        if (removals.length === 1 && additions.length === 1) {
+          // Use swapOwner instead of removeOwner + addOwnerWithThreshold
+          const removal = removals[0];
+          const addition = additions[0];
+
+          const ownerIndex = currentOwners.findIndex((o) => o.toLowerCase() === removal.address.toLowerCase());
 
           if (ownerIndex === -1) {
             throw new Error(`Owner ${removal.address} not found`);
@@ -700,30 +664,11 @@ export default function useSafe(safeAddress: `0x${string}`) {
               ? ("0x0000000000000000000000000000000000000001" as Address)
               : currentOwners[ownerIndex - 1];
 
-          // For removals, we use current threshold (will be changed later)
+          // Encode the swapOwner function call
           const data = encodeFunctionData({
             abi: SAFE_ABI,
-            functionName: "removeOwner",
-            args: [prevOwner, removal.address, BigInt(safeInfo.threshold)],
-          });
-
-          transactions.push({
-            to: safeAddress,
-            value: "0",
-            data,
-            operation: 0,
-          });
-
-          // Update our local owners list for the next iteration
-          currentOwners = currentOwners.filter((_, i) => i !== ownerIndex);
-        }
-
-        // Create add transactions
-        for (const addition of additions) {
-          const data = encodeFunctionData({
-            abi: SAFE_ABI,
-            functionName: "addOwnerWithThreshold",
-            args: [addition.address, BigInt(safeInfo.threshold)],
+            functionName: "swapOwner",
+            args: [prevOwner, removal.address, addition.address],
           });
 
           transactions.push({
@@ -734,7 +679,60 @@ export default function useSafe(safeAddress: `0x${string}`) {
           });
 
           // Update our local owners list
+          currentOwners = currentOwners.filter((_, i) => i !== ownerIndex);
           currentOwners.push(addition.address);
+        } else {
+          // Use separate removeOwner and addOwnerWithThreshold transactions
+          // Create remove transactions
+          for (const removal of removals) {
+            const ownerIndex = currentOwners.findIndex((o) => o.toLowerCase() === removal.address.toLowerCase());
+
+            if (ownerIndex === -1) {
+              throw new Error(`Owner ${removal.address} not found`);
+            }
+
+            // Get the previous owner in the linked list
+            const prevOwner =
+              ownerIndex === 0
+                ? ("0x0000000000000000000000000000000000000001" as Address)
+                : currentOwners[ownerIndex - 1];
+
+            // For removals, we use current threshold (will be changed later)
+            const data = encodeFunctionData({
+              abi: SAFE_ABI,
+              functionName: "removeOwner",
+              args: [prevOwner, removal.address, BigInt(safeInfo.threshold)],
+            });
+
+            transactions.push({
+              to: safeAddress,
+              value: "0",
+              data,
+              operation: 0,
+            });
+
+            // Update our local owners list for the next iteration
+            currentOwners = currentOwners.filter((_, i) => i !== ownerIndex);
+          }
+
+          // Create add transactions
+          for (const addition of additions) {
+            const data = encodeFunctionData({
+              abi: SAFE_ABI,
+              functionName: "addOwnerWithThreshold",
+              args: [addition.address, BigInt(safeInfo.threshold)],
+            });
+
+            transactions.push({
+              to: safeAddress,
+              value: "0",
+              data,
+              operation: 0,
+            });
+
+            // Update our local owners list
+            currentOwners.push(addition.address);
+          }
         }
 
         // Finally, change threshold if it's different

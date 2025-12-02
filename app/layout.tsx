@@ -1,8 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import Providers from "./provider/providers";
-import NavBar from "./components/NavBar";
-import Footer from "./components/Footer";
 
 export const metadata: Metadata = {
   title: "localsafe.eth",
@@ -15,19 +13,11 @@ export const metadata: Metadata = {
  * @param param0 - The children components to be rendered within the layout.
  * @returns {JSX.Element} The rendered RootLayout component.
  */
-export default async function RootLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className="min-h-screen">
       <body className={`bg-base-300 flex min-h-screen flex-col antialiased`}>
-        <Providers>
-          <NavBar />
-          <main className="flex flex-1">{children}</main>
-          <Footer />
-        </Providers>
+        <Providers>{children}</Providers>
       </body>
     </html>
   );
